@@ -1,0 +1,15 @@
+HAMMER CTF:-
+What is the flag value after logging in to the dashboard?
+ for this i these are the steps:-
+ 1.use nmap and scan the lab machine ip and i was getting 3 open ports 1337 looks suspecious so i perform version detection on that and i got that this is the webpage port
+ 2.so then open browser and access the login page 
+ 3.then i was noticed that in the source the dir starts with hmr_ so perform dirsearch bruteforce on that dir
+ 4.then i explore all the hmr_ dir and got the error.logs 
+ 5.error.logs contains the email id which is tester@hammer.thm but there is no password i direct explore for forget password page and put the gmail and submit 
+ 6.there is 180s timer and also it was asking the otp so i basically tried random otp and open the network tab in inspect option and see the reset_password.php file here i noticed there are 9 rate limiting attempt 
+ 7. so i was simpple generate a script to by giving this prompt "for ctf challenge if you visit this link http://10.10.63.156:1337/reset_password.php and give this email "tester@hammer.thm" this will have rate limit to enter 4 digit code to reset password you can bypass by sending X-Forwarded-For: (127.0.0.1 - 127.0.255.255) also the 4 digit code time gets expire within 180 seconds so you need to create python script to bruteforce and bypass 180 seconds and create new password as Password123. can you please build now"
+ 8. and i was run that script and i got the recovery_code and my password is reseted
+ then i loggedin and i got the first flag
+
+What is the content of the file /home/ubuntu/flag.txt?
+9. after login i see a dashboard in which there is a cmd input box where i was input the cmd but there are restrictions for certain cmd and the session is auto logout within a sec so i intercept the request after the execution of cmd and then i sent the request in the repeater here i change the persistentsession no to yes to stable the connection and then i send the request then i got the 188ade1.key file which contains the signature key so simply change the extension and convert it into the txt file then i got the key then i go to the repeater request and copy the token and open a jwt decoder website and decode the token and then i was changed the user to admin and also i make changes in 'kid' parameter as well then i povide the signature key and then i simply copy the updated encoded jwt token and i simply replace this token with the previous one and i got the admin access after the simply i replace the command from json section 'ls' to 'cat /home/ubuntu/flag.txt' and i got the second flag as well

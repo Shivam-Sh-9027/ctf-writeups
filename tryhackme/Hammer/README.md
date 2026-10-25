@@ -119,13 +119,33 @@ Remediation recommendations
 - Restrict command execution to an explicit allowlist of safe operations, run with least privilege, and avoid exposing arbitrary operating-system commands through a web dashboard.
 - Add regression tests for rate-limit bypass, unauthorized role changes, key-file access, and command endpoint authorization.
 Evidence checklist for GitHub
-Before publishing, add screenshots that demonstrate the key stages, with secrets redacted:
-- [ ] Nmap results showing the discovered services.
-- [ ] Directory-discovery results showing the relevant hmr_ paths.
-- [ ] The reset page and relevant request/response behavior.
-- [ ] The dashboard showing the first flag.
-- [ ] The JWT header/payload with tokens and signatures redacted.
-- [ ] The successful second flag response.
+Evidence screenshots uploaded to screenshots/ (original capture filenames retained). Review each image for redaction before publishing:
+- [x] Nmap results showing the discovered services.
+- [x] Directory-discovery results showing the relevant hmr_ paths.
+- [x] The reset page and relevant request/response behavior.
+- [x] The dashboard showing the first flag.
+- [x] The JWT header/payload with tokens and signatures redacted.
+- [x] The successful second flag response.
+Uploaded files:
+- screenshots/01-login-page.jpg
+- screenshots/02-directory-enumeration.jpg
+- screenshots/03-error-log-discovery.jpg
+- screenshots/04-dashboard-first-flag.jpg
+- screenshots/05-command-execution-flag.jpg
+- screenshots/Screenshot From 2026-10-24 22-47-18.jpg
+- screenshots/Screenshot From 2026-10-24 22-48-52.jpg
+- screenshots/Screenshot From 2026-10-24 23-19-26.jpg
+- screenshots/Screenshot From 2026-10-25 00-52-36.jpg
+- screenshots/Screenshot From 2026-10-25 01-59-53.jpg
+- screenshots/Screenshot From 2026-10-25 02-00-42.jpg
+- screenshots/Screenshot From 2026-10-25 02-01-16.jpg
+- screenshots/Screenshot From 2026-10-25 02-01-38.jpg
+- screenshots/Screenshot From 2026-10-25 02-17-30.jpg
+- screenshots/Screenshot From 2026-10-25 02-20-36.jpg
+- screenshots/Screenshot From 2026-10-25 02-36-55.jpg
+- screenshots/Screenshot From 2026-10-25 02-37-41.jpg
+- screenshots/Screenshot From 2026-10-25 02-37-49.jpg
+- screenshots/Screenshot From 2026-10-25 02-38-07.jpg
 Redact before upload: bearer tokens, session cookies, the contents of 188ade1.key, recovery codes, private IPs if you prefer not to disclose them, and any other reusable credentials. Do not publish a working session token or signing secret.
 Suggested repository layout
 hammer-ctf/
