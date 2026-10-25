@@ -25,6 +25,9 @@ Step 2 — Open the web application
 Browse to:
 http://<TARGET_IP>:1337/
 The application presented a login page and a Forgot your password? link. The page's source referenced resource paths beginning with hmr_, which provided a useful lead for content discovery.
+
+![Login page at port 1337](screenshots/01-login-page.jpg)
+*Login page served on port 1337, showing the "Forgot your password?" link.*
 2. Directory discovery and information disclosure
 Step 3 — Enumerate web paths
 Use a directory-discovery tool against the lab web service. For example:
@@ -34,17 +37,26 @@ Step 4 — Inspect discovered resources
 Browse the discovered paths and review any files that are exposed. In this challenge, hmr_logs/error.logs was reported to contain application error messages and the email address:
 tester@hammer.thm
 Why this mattered: The log disclosure revealed a valid account identifier, which could be used in the password-reset workflow. Error logs should not be publicly accessible in a production application.
+
+![Directory discovery and exposed error log](screenshots/02-directory-enumeration.jpg)
+*dirsearch results revealing the `hmr_` paths and the exposed `hmr_logs/error.logs` containing the account email.*
 3. Password-reset weakness
 Step 5 — Start the password-reset flow
 Return to the login page, select Forgot your password?, and submit the discovered account email:
 tester@hammer.thm
 The reset page requested a four-digit recovery code and showed a countdown of roughly 180 seconds.
+
+![Password-reset countdown](screenshots/Screenshot%20From%202026-10-24%2022-48-52.jpg)
+*Reset page requesting the four-digit recovery code with the ~180-second countdown.*
 Step 6 — Inspect reset behavior
 Submit a test code and inspect the request in the browser's Developer Tools Network panel. The request was handled by reset_password.php. The supplied notes report a rate-limit allowance of nine attempts.
 
 This indicated two constraints to investigate in the authorized lab:
 - The recovery code had a short validity period.
 - Repeated guesses were rate limited.
+
+![Reset request in DevTools Network tab](screenshots/Screenshot%20From%202026-10-24%2023-19-26.jpg)
+*Browser DevTools Network tab showing the `reset_password.php` request and rate-limit headers (redacted).*
 Step 7 — Automate the recovery-code test in the lab
 The notes describe a Python script that submitted candidate four-digit codes and varied the X-Forwarded-For request header within the 127.0.0.0/8 range. The target accepted this header for rate-limit accounting, allowing the challenge's rate limit to be bypassed. The script completed before the recovery-code window expired and set the new password to Password123.
 
@@ -58,6 +70,9 @@ Return to the login page and authenticate using:
 - Password: Password123 (the password set during the lab workflow)
 The dashboard welcomed the user as Thor and displayed the first flag:
 THM{AuthBypass3D}
+
+![Dashboard showing the first flag](screenshots/04-dashboard-first-flag.jpg)
+*Dashboard greeting Thor and displaying `THM{AuthBypass3D}`.*
 Record the flag as the result for objective 1.
 4. JWT analysis and administrator access
 Step 9 — Inspect the dashboard command request
@@ -94,6 +109,9 @@ Step 13 — Test command execution with the elevated token
 With the modified token accepted in the authorized lab, the notes changed the JSON command value from a directory-listing command to a file-read command targeting:
 /home/ubuntu/flag.txt
 The request was sent to execute_command.php, and the response returned the file contents.
+
+![Command endpoint response (second flag)](screenshots/05-command-execution-flag.jpg)
+*Intercepted `execute_command.php` response returning the contents of `/home/ubuntu/flag.txt` (flag value visible in the screenshot; transcribe manually if needed).*
 
 The supplied notes do not include the literal value of this second flag, so it is intentionally not guessed here. Add the exact value from your successful response before publishing if you want the repository to document both flags.
 Results
@@ -147,6 +165,23 @@ Uploaded files:
 - screenshots/Screenshot From 2026-10-25 02-37-49.jpg
 - screenshots/Screenshot From 2026-10-25 02-38-07.jpg
 Redact before upload: bearer tokens, session cookies, the contents of 188ade1.key, recovery codes, private IPs if you prefer not to disclose them, and any other reusable credentials. Do not publish a working session token or signing secret.
+
+Note: The following captures were intentionally withheld from this repository because OCR review showed they contained unredacted secrets (JWTs, bearer tokens, session cookies, signing-secret material, recovery codes, or key-file contents). They must be redacted before publication:
+- 03-error-log-discovery.jpg
+- Screenshot From 2026-10-24 22-47-18.jpg
+- Screenshot From 2026-10-25 00-52-36.jpg
+- Screenshot From 2026-10-25 01-59-53.jpg
+- Screenshot From 2026-10-25 02-00-42.jpg
+- Screenshot From 2026-10-25 02-01-16.jpg
+- Screenshot From 2026-10-25 02-01-38.jpg
+- Screenshot From 2026-10-25 02-36-55.jpg
+
+Additional redacted-safe captures also available in screenshots/ (DevTools views and duplicate dashboard views):
+- screenshots/Screenshot From 2026-10-25 02-17-30.jpg
+- screenshots/Screenshot From 2026-10-25 02-20-36.jpg
+- screenshots/Screenshot From 2026-10-25 02-37-41.jpg
+- screenshots/Screenshot From 2026-10-25 02-37-49.jpg
+- screenshots/Screenshot From 2026-10-25 02-38-07.jpg
 Suggested repository layout
 hammer-ctf/
 ├── README.md
