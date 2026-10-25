@@ -1,194 +1,141 @@
-# TryHackMe: Hammer
-
-## 1. Title and challenge overview
-
-**Hammer** is a TryHackMe web application challenge. The target exposes an HTTP service on port `1337`. The challenge path involves web reconnaissance, directory discovery, exposed error logs, password-reset abuse, rate-limit bypass, dashboard access, JWT analysis, signing-key exposure, and command execution leading to `/home/ubuntu/flag.txt`.
-
-## 2. Platform and challenge objectives
-
-- Platform: TryHackMe
-- Target service: HTTP on port `1337`
-- Objectives: obtain the dashboard flag and retrieve `/home/ubuntu/flag.txt`
-
-## 3. Summary of the attack chain
-
-1. Discover web directories and exposed logs.
-2. Identify the reset flow and target email `tester@hammer.thm`.
-3. Brute-force the 4-digit recovery code while bypassing rate limiting with `X-Forwarded-For`.
-4. Reset the password and log in to the dashboard.
-5. Capture the first flag: `THM{AuthBypass3D}`.
-6. Intercept the command-execution request in Burp Suite.
-7. Analyze and forge an admin JWT using an exposed signing key.
-8. Execute `cat /home/ubuntu/flag.txt` and capture the second flag: `THM{RUNANYCOMMAND1337}`.
-
-## 4. Reconnaissance and Nmap enumeration
-
-The supplied evidence does not include a captured Nmap scan. The web service was identified on port `1337` during manual browsing. Treat any port/service identification as an observed lab step rather than a preserved scan output.
-
-## 5. Web application discovery on port 1337
-
-The application provides login, password reset, dashboard, and command execution functionality. The target IP is lab-specific and temporary.
-
-## 6. Directory enumeration and exposed error logs
-
-A wordlist was prepared and used with `dirsearch`:
-
-```bash
-sed 's/^/hmr_/' big.txt > hmr_big.txt
-dirsearch --url http://<target-ip>:1337 -w /home/shivam/hmr_big.txt
-```
-
-Discovered directories included:
-
-- `/hmr_css/`
-- `/hmr_images/`
-- `/hmr_js/`
-- `/hmr_logs/`
-
-The error log at `/hmr_logs/error.log` exposed Apache errors and references to paths such as `/restricted-area`, `/admin-login`, `/var/www/html/`, and `/home/hammer/test.php`.
-
-![Directory enumeration and exposed error log](screenshots/02-directory-enumeration.jpg)
-
-*Figure 2: Directory discovery and Apache error-log exposure.*
-
-![Error log discovery](screenshots/03-error-log-discovery.jpg)
-
-*Figure 3: Additional error-log and path disclosure evidence.*
-
-## 7. Discovery of `tester@hammer.thm`
-
-The reset flow is initiated from the login page via **Forgot your password?**. The reset page is `reset_password.php` and accepts a 4-digit recovery code within a time limit.
-
-![Login page](screenshots/01-login-page.jpg)
-
-*Figure 1: Application login page.*
-
-## 8. Password-reset workflow and recovery-code behavior
-
-The reset code was brute-forced with a Python script (`hammer.py`) using 50 threads. The script sends the initial reset request for `tester@hammer.thm`, then tries all 4-digit codes.
-
-Observed successful output:
-
-```text
-[+] Sending the password reset request.
-[+] Starting the code brute-force.
-[+] Found the recovery code: [REDACTED]
-[+] Sending the new password request.
-[+] Password is set to [REDACTED]
-```
-
-## 9. Rate-limit weakness and the role of `X-Forwarded-For`
-
-Rate limiting was bypassed by rotating the `X-Forwarded-For` header across `127.0.0.1` to `127.0.255.255`. The response header `Rate-Limit-Pending` was observed (value `6` in one capture). This indicates the application trusted a client-controlled forwarding header for rate limiting.
-
-## 10. Password reset and successful dashboard login
-
-Recovered credentials were used to log in:
-
-- Email: `tester@hammer.thm`
-- Password: `[REDACTED]`
-
-## 11. First flag
-
-After login, the dashboard greets the user and displays the first flag:
-
-- URL: `http://<target-ip>:1337/dashboard.php`
-- Welcome: `Welcome, Thor! - Flag: THM{AuthBypass3D}`
-- Role: `user`
-- Command input accepts commands such as `ls` or `whoami`; restricted commands return `Command not allowed`.
-
-**Flag 1:** `THM{AuthBypass3D}`
-
-![Dashboard displaying the first flag](screenshots/04-dashboard-first-flag.jpg)
-
-*Figure 4: Successful dashboard login and first flag.*
-
-## 12. Dashboard command endpoint analysis
-
-The endpoint `/execute_command.php` accepts JSON:
-
-```json
-{"command":"ls"}
-```
-
-Restricted commands are rejected with `Command not allowed`. A valid session (`PHPSESSID`) and JWT (`token` cookie / `Authorization: Bearer ...`) are required.
-
-## 13. HTTP request interception using Burp Suite
-
-Burp Suite Proxy/Repeater was used to inspect and replay requests to `/execute_command.php`, including modifying the `Authorization` header and `token` cookie.
-
-## 14. JWT header and payload analysis
-
-The JWT header uses `alg: HS256` and a `kid` pointing to a local key file. Observed `kid` values:
-
-- `/var/www/mykey.key`
-- `/var/www/html/188ade1.key`
-
-## 15. Exposed signing-key discovery
-
-A key file contained a 32-hex-character signing secret. The value is redacted for publication. It was used with jwt.io to forge a new JWT with `role: admin`.
-
-## 16. JWT authorization weakness and administrator access
-
-The forged admin JWT was placed in the `Authorization` header and `token` cookie. This granted administrative command execution, indicating improper JWT validation and role enforcement.
-
-## 17. Retrieval of `/home/ubuntu/flag.txt`
-
-With the forged admin JWT, the following request was sent via Burp Repeater:
-
-```http
-POST /execute_command.php HTTP/1.1
-Host: <target-ip>:1337
-Content-Type: application/json
-Authorization: Bearer [REDACTED]
-
-{"command":"cat /home/ubuntu/flag.txt"}
-```
-
-Response:
-
-```json
-{"output":"THM{RUNANYCOMMAND1337}\n"}
-```
-
-**Flag 2:** `THM{RUNANYCOMMAND1337}`
-
-![Burp response containing the second flag](screenshots/05-command-execution-flag.jpg)
-
-*Figure 5: Command execution response containing the second flag (request tokens redacted).*
-
-## 18. Final results and attack-chain summary
-
-- Flag 1: `THM{AuthBypass3D}`
-- Flag 2: `THM{RUNANYCOMMAND1337}`
-- Attack chain: reconnaissance → directory discovery → log exposure → password reset abuse → rate-limit bypass → JWT key exposure → privilege escalation → command execution.
-
-## 19. Vulnerability analysis and remediation recommendations
-
-- Exposure of diagnostic logs: restrict access to `/hmr_logs/` and avoid verbose error output in production.
-- Weak recovery-code protections: use strong, unpredictable codes and secure delivery; add backoff and account lockout.
-- Trusting client-controlled forwarding headers for rate limiting: derive client identity from trusted proxy layers only.
-- Exposure of a JWT signing key: store keys outside web root and restrict permissions.
-- Improper JWT authorization or role validation: validate algorithm, issuer, audience, expiry, and enforce server-side authorization.
-- Excessive command-execution privileges: remove or strictly restrict command execution endpoints.
-
-## 20. Lessons learned
-
-- Logs can leak sensitive paths and implementation details.
-- Rate limiting must not trust spoofable headers.
-- JWT `kid` and signing-key exposure can lead to full privilege escalation.
-- Client-side role checks are not a security boundary.
-
-## 21. Evidence and screenshot references
-
-- `screenshots/01-login-page.jpg` — Login page.
-- `screenshots/02-directory-enumeration.jpg` — Directory discovery and exposed logs.
-- `screenshots/03-error-log-discovery.jpg` — Error-log disclosure.
-- `screenshots/04-dashboard-first-flag.jpg` — Dashboard and first flag.
-- `screenshots/05-command-execution-flag.jpg` — Command execution and second flag.
-
-## References
-
-- TryHackMe Hammer room.
-- Observed endpoints: `/`, `/login`, `/reset_password.php`, `/dashboard.php`, `/execute_command.php`, `/logout.php`, `/hmr_logs/error.log`.
-path: /home/shivam/ctf-writeups/tryhackme/Hammer/README.md
+Hammer CTF — Write-up
+Platform: TryHackMe
+Difficulty: Not specified in the supplied notes
+Focus areas: Web enumeration, password-reset logic, rate-limit bypass, JWT tampering, privilege escalation
+Status: Both requested objectives were completed in the supplied notes.
+
+Objectives
+1. Find the flag displayed after logging in to the dashboard.
+2. Read the contents of /home/ubuntu/flag.txt.
+Lab safety: This write-up describes activity against an authorized CTF target. Replace the example target IP with the IP assigned to your own lab instance. Do not run these techniques against systems without explicit permission.
+
+Summary
+The initial web enumeration identified port 1337 as the web application. Directory discovery revealed application paths and an exposed error log containing the account email tester@hammer.thm. The password-reset flow used a four-digit recovery code with a short validity window and rate limiting. In the lab, the reset could be completed by automating code attempts while varying the X-Forwarded-For header as accepted by the target.
+
+After signing in, the dashboard displayed the first flag. The dashboard also exposed a command-execution feature with restrictions and session behavior. Intercepting its request showed a JWT bearer token. The notes describe finding a signing key in an exposed file, then modifying the token's role and key identifier (kid) to obtain administrator access. With that access, the command endpoint was used to read /home/ubuntu/flag.txt.
+1. Reconnaissance and service discovery
+Step 1 — Scan the target
+Run a basic port scan against the IP assigned to the TryHackMe machine:
+nmap -sC -sV -oN nmap-initial.txt <TARGET_IP>
+- -sC runs Nmap's default scripts.
+- -sV attempts to identify service versions.
+- -oN saves the results to a text file.
+Observation: The supplied notes report three open ports. Port 1337 stood out as the likely web application, so it was investigated further.
+Step 2 — Open the web application
+Browse to:
+http://<TARGET_IP>:1337/
+The application presented a login page and a Forgot your password? link. The page's source referenced resource paths beginning with hmr_, which provided a useful lead for content discovery.
+2. Directory discovery and information disclosure
+Step 3 — Enumerate web paths
+Use a directory-discovery tool against the lab web service. For example:
+dirsearch -u http://<TARGET_IP>:1337/ -w <WORDLIST_PATH>
+The notes report discovery of paths including hmr_css, hmr_images, hmr_js, and hmr_logs.
+Step 4 — Inspect discovered resources
+Browse the discovered paths and review any files that are exposed. In this challenge, hmr_logs/error.logs was reported to contain application error messages and the email address:
+tester@hammer.thm
+Why this mattered: The log disclosure revealed a valid account identifier, which could be used in the password-reset workflow. Error logs should not be publicly accessible in a production application.
+3. Password-reset weakness
+Step 5 — Start the password-reset flow
+Return to the login page, select Forgot your password?, and submit the discovered account email:
+tester@hammer.thm
+The reset page requested a four-digit recovery code and showed a countdown of roughly 180 seconds.
+Step 6 — Inspect reset behavior
+Submit a test code and inspect the request in the browser's Developer Tools Network panel. The request was handled by reset_password.php. The supplied notes report a rate-limit allowance of nine attempts.
+
+This indicated two constraints to investigate in the authorized lab:
+- The recovery code had a short validity period.
+- Repeated guesses were rate limited.
+Step 7 — Automate the recovery-code test in the lab
+The notes describe a Python script that submitted candidate four-digit codes and varied the X-Forwarded-For request header within the 127.0.0.0/8 range. The target accepted this header for rate-limit accounting, allowing the challenge's rate limit to be bypassed. The script completed before the recovery-code window expired and set the new password to Password123.
+
+Result reported in the notes: The script found the recovery code, and the password was reset successfully.
+Security lesson: X-Forwarded-For is user-controllable unless a trusted reverse proxy removes and rewrites it. Applications must not trust arbitrary client-supplied forwarding headers to determine rate-limit identity. Apply limits using a trusted client identity and account-level controls, and add monitoring and lockout protections appropriate to the threat model.
+
+For a public write-up, avoid publishing a reusable brute-force script or a live recovery code. Explain the flaw and the observed result, and keep any exploit implementation limited to the isolated CTF environment.
+Step 8 — Sign in and capture the first flag
+Return to the login page and authenticate using:
+- Email: tester@hammer.thm
+- Password: Password123 (the password set during the lab workflow)
+The dashboard welcomed the user as Thor and displayed the first flag:
+THM{AuthBypass3D}
+Record the flag as the result for objective 1.
+4. JWT analysis and administrator access
+Step 9 — Inspect the dashboard command request
+The dashboard contained a command input. The notes report that some commands were restricted and that the session appeared to log out quickly after a command was submitted.
+
+Use the browser's Network panel or an intercepting proxy such as Burp Suite to inspect the request sent to execute_command.php. The observed request used a bearer JWT in the Authorization header and JSON data containing a command field.
+
+The notes also report that changing the request's persistentSession value to yes made the lab session more stable. Treat this as a challenge-specific observation, not a general authentication recommendation.
+Step 10 — Review the exposed key file
+The command endpoint's response exposed a directory listing that included 188ade1.key. The notes state that the file contained a signing key and that the key was saved as a text file for inspection.
+
+Finding: A signing key should never be exposed through a web-accessible path or a command endpoint. Anyone who obtains a JWT signing secret may be able to forge tokens if the application trusts tokens signed with that secret.
+
+For a public repository, do not commit the actual signing key, a complete live JWT, session cookies, or unredacted proxy captures.
+Step 11 — Decode and inspect the JWT
+The notes used a JWT decoder to inspect the token's header and payload. The payload included user data and a role claim; the header included an algorithm and a kid (key identifier).
+
+Conceptually, the relevant claims looked like this:
+{
+  "data": {
+    "email": "tester@hammer.thm",
+    "role": "user"
+  }
+}
+The example above is illustrative and intentionally omits token timestamps, user identifiers, signature material, and the actual key.
+Step 12 — Identify the token-validation weakness
+The notes report that the token was modified so the role claim became admin, and the kid was changed to reference the discovered key. The modified token was then signed using the exposed key and substituted for the original token in the intercepted request.
+
+Result reported in the notes: The application accepted the modified token and granted administrator access.
+
+This is a combination of key disclosure and improper trust in client-presented JWT claims. A role claim must not be trusted merely because it appears in a decoded token; the server must validate the signature and claims correctly, and signing keys must remain secret.
+5. Read the second flag
+Step 13 — Test command execution with the elevated token
+With the modified token accepted in the authorized lab, the notes changed the JSON command value from a directory-listing command to a file-read command targeting:
+/home/ubuntu/flag.txt
+The request was sent to execute_command.php, and the response returned the file contents.
+
+The supplied notes do not include the literal value of this second flag, so it is intentionally not guessed here. Add the exact value from your successful response before publishing if you want the repository to document both flags.
+Results
+Objective	Result
+Flag after dashboard login	THM{AuthBypass3D}
+Contents of /home/ubuntu/flag.txt	Retrieved according to the notes; literal flag not included in the supplied text
+
+
+Vulnerabilities and lessons learned
+1. Information disclosure: Web-accessible logs exposed a valid account email and useful application details.
+2. Weak recovery-code defenses: A short numeric code and a client-spoofable rate-limit identity made automated guessing feasible in the lab.
+3. Trusting forwarding headers: The target's rate limiting could be bypassed by manipulating X-Forwarded-For.
+4. Signing-key exposure: The key file was accessible through the application workflow.
+5. JWT privilege escalation: The application accepted a modified role claim after token re-signing with the exposed key.
+6. Overpowered command feature: A dashboard command endpoint allowed sensitive file access once administrator authorization was bypassed.
+Remediation recommendations
+- Keep logs, configuration files, and signing keys outside the web root; deny direct web access to diagnostic files.
+- Remove sensitive values from error messages and rotate any secret that may have been exposed.
+- Use sufficiently unpredictable, short-lived recovery tokens; enforce per-account and per-source throttling on the server, add abuse monitoring, and invalidate reset tokens after use.
+- Trust X-Forwarded-For only when it is inserted by a configured trusted proxy. Do not let arbitrary clients choose their rate-limit identity.
+- Store JWT signing secrets securely, rotate compromised keys, and use a strict allowlist of accepted algorithms.
+- Validate JWT signatures and relevant claims server-side. Resolve roles from trusted server-side authorization data rather than trusting a client-editable role claim.
+- Restrict command execution to an explicit allowlist of safe operations, run with least privilege, and avoid exposing arbitrary operating-system commands through a web dashboard.
+- Add regression tests for rate-limit bypass, unauthorized role changes, key-file access, and command endpoint authorization.
+Evidence checklist for GitHub
+Before publishing, add screenshots that demonstrate the key stages, with secrets redacted:
+- [ ] Nmap results showing the discovered services.
+- [ ] Directory-discovery results showing the relevant hmr_ paths.
+- [ ] The reset page and relevant request/response behavior.
+- [ ] The dashboard showing the first flag.
+- [ ] The JWT header/payload with tokens and signatures redacted.
+- [ ] The successful second flag response.
+Redact before upload: bearer tokens, session cookies, the contents of 188ade1.key, recovery codes, private IPs if you prefer not to disclose them, and any other reusable credentials. Do not publish a working session token or signing secret.
+Suggested repository layout
+hammer-ctf/
+├── README.md
+└── screenshots/
+    ├── 01-nmap.png
+    ├── 02-directory-discovery.png
+    ├── 03-password-reset.png
+    ├── 04-dashboard-first-flag.png
+    ├── 05-jwt-analysis-redacted.png
+    └── 06-second-flag-redacted.png
+Disclaimer
+This report documents a TryHackMe-style training exercise using the supplied notes. Use the techniques only in systems for which you have explicit authorization. Verify all target-specific details and add the second flag from your own lab evidence before publishing.
